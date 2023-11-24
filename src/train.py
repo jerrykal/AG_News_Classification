@@ -56,8 +56,8 @@ def parse_args() -> argparse.Namespace:
 
 def train(args: argparse.Namespace) -> None:
     """Train a model for text classification."""
-    save_name = f"lstm_{time.strftime('%Y-%m-%d_%H-%M-%S')}.pt"
-    save_path = os.path.join(args.save_dir, save_name)
+    save_name = f"lstm_{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+    save_path = os.path.join(args.save_dir, save_name + ".pt")
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
     writer = SummaryWriter(log_dir=os.path.join(args.log_dir, save_name))
