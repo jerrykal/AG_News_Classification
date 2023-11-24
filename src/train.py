@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
         "--data_path",
         type=str,
         default=os.path.abspath(
-            os.path.join(__file__, os.pardir, os.pardir, "data", "test.csv")
+            os.path.join(__file__, os.pardir, os.pardir, "data", "train.csv")
         ),
     )
     arg_parser.add_argument(
@@ -40,7 +40,6 @@ def parse_args() -> argparse.Namespace:
 
     # Data arguments
     arg_parser.add_argument("--use_news_title", action="store_true")
-    arg_parser.add_argument("--tokenizer_name", type=str, default="bert-base-uncased")
 
     # Model arguments
     arg_parser.add_argument("--max_length", type=int, default=128)
@@ -49,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     arg_parser.add_argument("--num_layers", type=int, default=1)
     arg_parser.add_argument("--dropout", type=float, default=0.5)
     arg_parser.add_argument("--batch_size", type=int, default=32)
-    arg_parser.add_argument("--num_epochs", type=int, default=50)
+    arg_parser.add_argument("--num_epochs", type=int, default=20)
     arg_parser.add_argument("--lr", type=float, default=1e-3)
 
     return arg_parser.parse_args()
@@ -72,7 +71,7 @@ def train(args: argparse.Namespace) -> None:
     )
 
     # Tokenize text
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     train_encoding = tokenizer(
         train_text,
         truncation=True,
@@ -148,8 +147,8 @@ def train(args: argparse.Namespace) -> None:
 
         # Validation
         model.eval()
-        with torch.no_grad():
-            for batch in val_dataloader:
+        for batch in val_dataloader:
+            with torch.no_grad():
                 input_ids = batch["input_ids"].to(args.device)
                 labels = batch["labels"].to(args.device)
 
@@ -169,10 +168,24 @@ def train(args: argparse.Namespace) -> None:
             f"Epoch {epoch+1}/{args.num_epochs} | Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.4f}"
         )
 
+        # Saving the best model along with its hyperparameters
         if val_acc > best_acc:
             print(f"Saving model with val acc: {val_acc:.4f}")
             best_acc = val_acc
-            torch.save(model.state_dict(), save_path)
+            torch.save(
+                {
+                    "model_args": {
+                        "max_length": args.max_length,
+                        "embedding_dim": args.embedding_dim,
+                        "hidden_dim": args.hidden_dim,
+                        "num_layers": args.num_layers,
+                        "output_dim": num_classes,
+                        "dropout": args.dropout,
+                    },
+                    "state_dict": model.state_dict(),
+                },
+                save_path,
+            )
 
     writer.close()
 
