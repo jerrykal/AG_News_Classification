@@ -6,7 +6,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
-from transformers import AutoTokenizer
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from agnews_dataset import AGNewsDataset, preprocess_data
 from model.lstm import LSTMClassifier
@@ -42,6 +42,9 @@ def parse_args() -> argparse.Namespace:
     arg_parser.add_argument("--use_news_title", action="store_true")
 
     # Model arguments
+    arg_parser.add_argument(
+        "--model", type=str, choices=["lstm", "bert"], default="lstm"
+    )
     arg_parser.add_argument("--max_length", type=int, default=128)
     arg_parser.add_argument("--embedding_dim", type=int, default=256)
     arg_parser.add_argument("--hidden_dim", type=int, default=256)
@@ -56,7 +59,7 @@ def parse_args() -> argparse.Namespace:
 
 def train(args: argparse.Namespace) -> None:
     """Train a model for text classification."""
-    save_name = f"lstm_{time.strftime('%Y-%m-%d_%H-%M-%S')}"
+    save_name = f"{args.model}_{time.strftime('%Y-%m-%d_%H-%M-%S')}"
     save_path = os.path.join(args.save_dir, save_name + ".pt")
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
@@ -103,17 +106,24 @@ def train(args: argparse.Namespace) -> None:
     )
 
     # Create model
-    model = LSTMClassifier(
-        vocab_size=len(tokenizer),
-        embedding_dim=args.embedding_dim,
-        hidden_dim=args.hidden_dim,
-        num_layers=args.num_layers,
-        output_dim=num_classes,
-        dropout=args.dropout,
-    ).to(args.device)
+    if args.model == "lstm":
+        model = LSTMClassifier(
+            vocab_size=len(tokenizer),
+            embedding_dim=args.embedding_dim,
+            hidden_dim=args.hidden_dim,
+            num_layers=args.num_layers,
+            output_dim=num_classes,
+            dropout=args.dropout,
+        ).to(args.device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    else:
+        model = AutoModelForSequenceClassification.from_pretrained(
+            "bert-base-uncased",
+            num_labels=num_classes,
+        ).to(args.device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 
     # Create optimizer & loss function
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = torch.nn.CrossEntropyLoss()
 
     best_acc = 0.0
@@ -126,18 +136,23 @@ def train(args: argparse.Namespace) -> None:
         # Train
         model.train()
         for batch in train_dataloader:
-            input_ids = batch["input_ids"].to(args.device)
-            labels = batch["labels"].to(args.device)
+            batch = {k: v.to(args.device) for k, v in batch.items()}
 
-            predictions = model(input_ids)
-            loss = criterion(predictions, labels)
+            if args.model == "lstm":
+                outputs = model(batch["input_ids"])
+                loss = criterion(outputs, batch["labels"])
+            else:
+                outputs = model(**batch)
+                loss = outputs.loss
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             train_loss += loss.item()
-            train_acc += (predictions.argmax(1) == labels).sum().item()
+
+            logits = outputs if args.model == "lstm" else outputs.logits
+            train_acc += (logits.argmax(1) == batch["labels"]).sum().item()
 
         train_loss /= len(train_dataloader)
         train_acc /= len(train_dataset)
@@ -149,14 +164,19 @@ def train(args: argparse.Namespace) -> None:
         model.eval()
         for batch in val_dataloader:
             with torch.no_grad():
-                input_ids = batch["input_ids"].to(args.device)
-                labels = batch["labels"].to(args.device)
+                batch = {k: v.to(args.device) for k, v in batch.items()}
 
-                predictions = model(input_ids)
-                loss = criterion(predictions, labels)
+                if args.model == "lstm":
+                    outputs = model(batch["input_ids"])
+                    loss = criterion(outputs, batch["labels"])
+                else:
+                    outputs = model(**batch)
+                    loss = outputs.loss
 
                 val_loss += loss.item()
-                val_acc += (predictions.argmax(1) == labels).sum().item()
+
+                logits = outputs if args.model == "lstm" else outputs.logits
+                val_acc += (logits.argmax(1) == batch["labels"]).sum().item()
 
         val_loss /= len(val_dataloader)
         val_acc /= len(val_dataset)
