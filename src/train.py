@@ -63,7 +63,7 @@ def train(args: argparse.Namespace) -> None:
     writer = SummaryWriter(log_dir=os.path.join(args.log_dir, save_name))
 
     # Load data
-    text, label = preprocess_data(args.data_path)
+    text, label = preprocess_data(args.data_path, args.use_news_title)
 
     # Split dataset into training and validation sets
     train_text, val_text, train_labels, val_labels = train_test_split(
