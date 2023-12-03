@@ -28,24 +28,12 @@ if __name__ == "__main__":
     arg_parser.add_argument(
         "--model", type=str, choices=["lstm", "bert"], default="lstm"
     )
-    arg_parser.add_argument("--weight_path", type=str, required=True)
+    arg_parser.add_argument("--ckpt_path", type=str, required=True)
     args = arg_parser.parse_args()
 
-    model_ckpt = torch.load(args.weight_path, map_location=args.device)
-
-    # Load the test data
-    text, label = preprocess_data(args.data_path)
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    encoding = tokenizer(
-        text,
-        padding=True,
-        truncation=True,
-        max_length=model_ckpt["model_args"]["max_length"],
-    )
-    dataset = AGNewsDataset(encoding, label)
-    dataloader = DataLoader(dataset, batch_size=32)
-
     # Load the model
+    model_ckpt = torch.load(args.ckpt_path, map_location=args.device)
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     if args.model == "lstm":
         model = LSTMClassifier(
             vocab_size=len(tokenizer),
@@ -61,6 +49,19 @@ if __name__ == "__main__":
             "bert-base-uncased", num_labels=4
         ).to(args.device)
         model.load_state_dict(model_ckpt["state_dict"])
+
+    # Load the test data
+    text, label = preprocess_data(
+        args.data_path, use_news_title=model_ckpt["model_args"]["use_news_title"]
+    )
+    encoding = tokenizer(
+        text,
+        padding=True,
+        truncation=True,
+        max_length=model_ckpt["model_args"]["max_length"],
+    )
+    dataset = AGNewsDataset(encoding, label)
+    dataloader = DataLoader(dataset, batch_size=32)
 
     # Evaluate the model
     model.eval()

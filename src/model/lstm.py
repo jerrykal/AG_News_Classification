@@ -24,6 +24,7 @@ class LSTMClassifier(nn.Module):
             hidden_size=hidden_dim,
             num_layers=num_layers,
             batch_first=True,
+            bidirectional=True,
         )
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_dim, output_dim)

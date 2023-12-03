@@ -1,8 +1,11 @@
 import argparse
 import os
+import random
 import time
 
+import numpy
 import torch
+import transformers
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -17,6 +20,9 @@ def parse_args() -> argparse.Namespace:
     arg_parser = argparse.ArgumentParser()
 
     # Training arguments
+    arg_parser.add_argument(
+        "--seed", type=int, default=0, help="Random seed for reproducibility."
+    )
     arg_parser.add_argument(
         "--data_path",
         type=str,
@@ -57,6 +63,18 @@ def parse_args() -> argparse.Namespace:
     return arg_parser.parse_args()
 
 
+def fix_seed(seed: int) -> None:
+    """Fix random seed for reproducibility."""
+    numpy.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
+    transformers.set_seed(seed)
+
+
 def train(args: argparse.Namespace) -> None:
     """Train a model for text classification."""
     save_name = f"{args.model}_{time.strftime('%Y-%m-%d_%H-%M-%S')}"
@@ -65,12 +83,15 @@ def train(args: argparse.Namespace) -> None:
         os.makedirs(args.save_dir)
     writer = SummaryWriter(log_dir=os.path.join(args.log_dir, save_name))
 
+    # Fix random seed for reproducibility
+    fix_seed(args.seed)
+
     # Load data
     text, label = preprocess_data(args.data_path, args.use_news_title)
 
     # Split dataset into training and validation sets
     train_text, val_text, train_labels, val_labels = train_test_split(
-        text, label, test_size=0.2
+        text, label, test_size=0.2, random_state=args.seed
     )
 
     # Tokenize text
@@ -195,6 +216,8 @@ def train(args: argparse.Namespace) -> None:
             torch.save(
                 {
                     "model_args": {
+                        "seed": args.seed,
+                        "use_news_title": args.use_news_title,
                         "max_length": args.max_length,
                         "embedding_dim": args.embedding_dim,
                         "hidden_dim": args.hidden_dim,
